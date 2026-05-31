@@ -1,7 +1,7 @@
 {
   "name": "llm-bridge-cache",
-  "version": "1.0.0",
-  "description": "A zero-dependency local API bridge for OpenAI & Anthropic, with prompt injection and prompt-cache keepalive. One OpenAI-compatible endpoint in front of multiple LLM providers.",
+  "version": "1.1.0",
+  "description": "A zero-dependency local API bridge for OpenAI & Anthropic. Accepts Chat Completions, Anthropic Messages, and OpenAI Responses formats, with prompt injection and prompt-cache keepalive.",
   "keywords": [
     "llm",
     "proxy",

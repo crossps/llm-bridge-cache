@@ -26,6 +26,7 @@
 
 | | |
 |---|---|
+| 🗣️ **Three inbound formats** | OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses — reply comes back in the format you sent. |
 | 🔀 **Multi-provider routing** | Model-name rules, explicit `provider/model` syntax, and per-provider model lists. |
 | 🔑 **Bring-your-own-key + rotation** | Read keys from env or config; list several to round-robin across them. |
 | ♻️ **Prompt-cache keepalive** | Per-conversation, multi-chat, auto-evicting. Anthropic-aware. |
@@ -33,6 +34,18 @@
 | 🌊 **Streaming** | Full SSE streaming for both providers, translated to OpenAI chunks. |
 | 🧰 **Tools & vision** | Function-calling and image inputs converted between formats. |
 | 📊 **Status endpoint** | `/status` shows providers, cache-refresh activity, and usage — never your keys. |
+
+## Accepted input formats
+
+The bridge speaks **three** inbound API dialects, so almost any client works as-is. Each request is routed to a provider by model name; the reply comes back in the **same format you sent**.
+
+| You send… | → Anthropic provider | → OpenAI provider |
+|---|---|---|
+| **`/v1/chat/completions`** (OpenAI Chat) | converted to Anthropic, response converted back | passthrough |
+| **`/v1/messages`** (Anthropic Messages) | **passthrough** + prompt-cache breakpoints + keepalive | converted to OpenAI, response converted back |
+| **`/v1/responses`** (OpenAI Responses) | *not yet — returns a clear 400* | passthrough |
+
+So Claude Code / the Anthropic SDK can keep speaking Anthropic on `/v1/messages` (and finally get the cache keepalive), Codex / the Agents SDK can speak Responses on `/v1/responses`, and everything else uses `/v1/chat/completions`. Responses→Anthropic translation is on the [roadmap](https://github.com/crossps/llm-bridge-cache/issues/1).
 
 ## Quick start
 
@@ -91,12 +104,39 @@ Add a custom OpenAI-compatible provider pointing at the bridge:
 </details>
 
 <details>
+<summary><b>Claude Code / Anthropic SDK (via /v1/messages)</b></summary>
+
+Point the Anthropic base URL at the bridge — it accepts the native Messages format and adds the cache keepalive:
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787   # SDK appends /v1/messages
+```
+The bridge forwards to Anthropic untouched (plus cache breakpoints + keepalive), or cross-converts to OpenAI if you target a `gpt-*` model.
+</details>
+
+<details>
+<summary><b>Codex / OpenAI Agents SDK (via /v1/responses)</b></summary>
+
+Set the OpenAI base URL to the bridge; the Responses API is passed through to OpenAI:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8787/v1   # SDK appends /responses
+```
+</details>
+
+<details>
 <summary><b>Generic / curl</b></summary>
 
 ```bash
+# OpenAI Chat Completions in
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}'
+
+# Anthropic Messages in
+curl http://127.0.0.1:8787/v1/messages \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-sonnet-4-5","max_tokens":256,"messages":[{"role":"user","content":"hi"}]}'
 ```
 </details>
 
@@ -163,7 +203,9 @@ After each real Anthropic turn, the bridge fingerprints the request (model + sys
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/v1/chat/completions` | Main endpoint (streaming + non-streaming). |
+| `POST` | `/v1/chat/completions` | OpenAI Chat Completions in (streaming + non-streaming). |
+| `POST` | `/v1/messages` | Anthropic Messages in (streaming + non-streaming). |
+| `POST` | `/v1/responses` | OpenAI Responses in (streaming + non-streaming). |
 | `GET` | `/v1/models` | Lists configured models in OpenAI format. |
 | `GET` | `/status` | Providers, cache-refresh activity, usage (no keys). |
 | `GET` | `/health` | `{ "status": "ok" }`. |

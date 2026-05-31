@@ -68,4 +68,69 @@ function stringifyContent(content) {
   return content == null ? '' : String(content);
 }
 
-module.exports = { applyInjection, applyDepth };
+// Compute the new system text given an existing value, in a given mode.
+function combineSystem(existing, text, mode) {
+  if (mode === 'replace' || !existing) return text;
+  return mode === 'append' ? `${existing}\n\n${text}` : `${text}\n\n${existing}`;
+}
+
+/**
+ * Injection for an Anthropic Messages request (body.system + body.messages).
+ */
+function applyInjectionAnthropic(body, inj) {
+  if (!inj || !inj.enabled) return body;
+
+  if (inj.system && String(inj.system).trim()) {
+    const text = String(inj.system);
+    const mode = inj.systemMode || 'prepend';
+    if (mode === 'replace' || body.system == null) {
+      body.system = text;
+    } else if (typeof body.system === 'string') {
+      body.system = combineSystem(body.system, text, mode);
+    } else if (Array.isArray(body.system)) {
+      const block = { type: 'text', text };
+      if (mode === 'append') body.system.push(block);
+      else body.system.unshift(block);
+    }
+  }
+
+  if (Array.isArray(inj.depth) && inj.depth.length && Array.isArray(body.messages)) {
+    for (const d of inj.depth) {
+      if (!d || !d.content) continue;
+      const role = d.role && d.role !== 'system' ? d.role : 'user'; // Anthropic has no system role in messages
+      const depth = Math.max(0, parseInt(d.depth, 10) || 0);
+      const pos = Math.max(0, body.messages.length - depth);
+      body.messages.splice(pos, 0, { role, content: String(d.content) });
+    }
+  }
+  return body;
+}
+
+/**
+ * Injection for an OpenAI Responses request (body.instructions + body.input).
+ */
+function applyInjectionResponses(body, inj) {
+  if (!inj || !inj.enabled) return body;
+
+  if (inj.system && String(inj.system).trim()) {
+    const text = String(inj.system);
+    const mode = inj.systemMode || 'prepend';
+    body.instructions = combineSystem(body.instructions || '', text, mode);
+  }
+
+  if (Array.isArray(inj.depth) && inj.depth.length) {
+    // Responses `input` may be a string or an array of input items; normalize to an array.
+    if (typeof body.input === 'string') body.input = [{ role: 'user', content: body.input }];
+    if (!Array.isArray(body.input)) body.input = [];
+    for (const d of inj.depth) {
+      if (!d || !d.content) continue;
+      const role = d.role || 'user';
+      const depth = Math.max(0, parseInt(d.depth, 10) || 0);
+      const pos = Math.max(0, body.input.length - depth);
+      body.input.splice(pos, 0, { role, content: String(d.content) });
+    }
+  }
+  return body;
+}
+
+module.exports = { applyInjection, applyDepth, applyInjectionAnthropic, applyInjectionResponses };

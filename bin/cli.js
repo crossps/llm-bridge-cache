@@ -76,6 +76,7 @@ function banner(config, server) {
   lines.push(`  LLM Bridge & Cache v${pkg.version}`);
   lines.push(`  Listening on ${proto}://${config.host}:${config.port}`);
   lines.push(`  Point any OpenAI-compatible client at:  ${base}/v1`);
+  lines.push('  Inbound formats: /v1/chat/completions  /v1/messages  /v1/responses');
   lines.push('');
   lines.push('  Providers:');
   for (const p of server.pool.list()) {

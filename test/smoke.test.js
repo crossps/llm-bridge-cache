@@ -30,6 +30,12 @@ const ANTHROPIC_REPLY = {
   usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 3 },
 };
 
+const OPENAI_RESPONSES_REPLY = {
+  id: 'resp_mock', object: 'response', model: 'gpt-4o',
+  output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Hello from Responses' }] }],
+  usage: { input_tokens: 1, output_tokens: 1 },
+};
+
 const ANTHROPIC_SSE = [
   '{"type":"message_start","message":{"id":"msg_mock","model":"claude-mock","usage":{"input_tokens":10}}}',
   '{"type":"content_block_start","index":0,"content_block":{"type":"text"}}',
@@ -68,6 +74,11 @@ before(async () => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(ANTHROPIC_REPLY));
       }
+      return;
+    }
+    if (path === '/v1/responses') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(OPENAI_RESPONSES_REPLY));
       return;
     }
     res.writeHead(404); res.end();
@@ -237,4 +248,125 @@ test('cacheRefresher: capture arms a chat and keepalive fires', async () => {
   assert.equal(calls, 1);
   assert.equal(refresher.stats.successfulRefreshes, 1);
   refresher.shutdown();
+});
+
+// --------------------------------------------------------------------------
+// /v1/messages  (Anthropic-format inbound)
+
+test('/v1/messages -> Anthropic passthrough + cache breakpoint added', async () => {
+  const r = await fetch(`${base()}/v1/messages`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }] }),
+  });
+  const j = await r.json();
+  assert.equal(j.type, 'message');
+  assert.equal(j.content[0].text, 'Hello from Claude'); // passed through untouched
+
+  const up = captured['/v1/messages'];
+  assert.equal(up.headers['x-api-key'], 'test-anthropic-key');
+  // Bridge added an ephemeral cache breakpoint to the last user message
+  assert.ok(Array.isArray(up.body.messages[0].content));
+  assert.deepEqual(up.body.messages[0].content[0].cache_control, { type: 'ephemeral' });
+});
+
+test('/v1/messages -> Anthropic streaming is relayed as Anthropic SSE', async () => {
+  const r = await fetch(`${base()}/v1/messages`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 100, stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+  });
+  assert.match(r.headers.get('content-type') || '', /text\/event-stream/);
+  const text = await r.text();
+  assert.ok(text.includes('text_delta'));   // native Anthropic event, not OpenAI chunk
+  assert.ok(text.includes('message_stop'));
+});
+
+test('/v1/messages -> OpenAI cross-conversion returns Anthropic shape', async () => {
+  const r = await fetch(`${base()}/v1/messages`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-4o', max_tokens: 50, system: 'be brief', messages: [{ role: 'user', content: 'hi' }] }),
+  });
+  const j = await r.json();
+  assert.equal(j.type, 'message');
+  assert.equal(j.content[0].text, 'Hello from GPT');
+  assert.equal(j.stop_reason, 'end_turn');
+
+  const up = captured['/v1/chat/completions'];
+  assert.equal(up.body.messages[0].role, 'system');
+  assert.equal(up.body.messages[0].content, 'be brief');
+  assert.equal(up.body.messages[1].content, 'hi');
+});
+
+// --------------------------------------------------------------------------
+// /v1/responses  (OpenAI Responses inbound)
+
+test('/v1/responses -> OpenAI passthrough', async () => {
+  const r = await fetch(`${base()}/v1/responses`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-4o', input: 'hi' }),
+  });
+  const j = await r.json();
+  assert.equal(j.output[0].content[0].text, 'Hello from Responses');
+  const up = captured['/v1/responses'];
+  assert.match(up.headers.authorization, /^Bearer test-openai-key$/);
+  assert.equal(up.body.input, 'hi');
+});
+
+test('/v1/responses -> Anthropic model returns a clear 400', async () => {
+  const r = await fetch(`${base()}/v1/responses`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-5', input: 'hi' }),
+  });
+  assert.equal(r.status, 400);
+  const j = await r.json();
+  assert.match(j.error.message, /\/v1\/messages|\/v1\/chat\/completions/);
+});
+
+// --------------------------------------------------------------------------
+// Unit checks for the new converters
+
+test('convert: anthropicToOpenAIRequest maps system, tools, tool_result', () => {
+  const out = convert.anthropicToOpenAIRequest({
+    model: 'gpt-4o', max_tokens: 100, system: 'sys',
+    messages: [
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'get', input: { a: 1 } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'res' }] },
+    ],
+    tools: [{ name: 'get', description: 'd', input_schema: { type: 'object' } }],
+  });
+  assert.equal(out.messages[0].role, 'system');
+  assert.equal(out.messages[1].content, 'q');
+  assert.equal(out.messages[2].tool_calls[0].function.name, 'get');
+  assert.equal(out.messages[3].role, 'tool');
+  assert.equal(out.messages[3].tool_call_id, 't1');
+  assert.equal(out.tools[0].function.name, 'get');
+});
+
+test('convert: openAIToAnthropicResponse maps content and stop_reason', () => {
+  const a = convert.openAIToAnthropicResponse({
+    choices: [{ message: { role: 'assistant', content: 'hello' }, finish_reason: 'length' }],
+    usage: { prompt_tokens: 4, completion_tokens: 2 },
+  }, 'gpt-4o');
+  assert.equal(a.type, 'message');
+  assert.equal(a.content[0].text, 'hello');
+  assert.equal(a.stop_reason, 'max_tokens');
+  assert.equal(a.usage.input_tokens, 4);
+});
+
+test('convert: OpenAIStreamToAnthropicTranslator emits valid event sequence', () => {
+  const t = new convert.OpenAIStreamToAnthropicTranslator('gpt-4o');
+  const events = [];
+  for (const c of [
+    { choices: [{ delta: { role: 'assistant' } }] },
+    { choices: [{ delta: { content: 'Hi' } }] },
+    { choices: [{ delta: {}, finish_reason: 'stop' }] },
+  ]) events.push(...t.handle(c));
+  events.push(...t.finish());
+  const types = events.map((e) => e.type);
+  assert.equal(types[0], 'message_start');
+  assert.ok(types.includes('content_block_start'));
+  assert.ok(events.some((e) => e.type === 'content_block_delta' && e.delta.type === 'text_delta' && e.delta.text === 'Hi'));
+  assert.ok(types.includes('content_block_stop'));
+  assert.ok(events.some((e) => e.type === 'message_delta' && e.delta.stop_reason === 'end_turn'));
+  assert.equal(types[types.length - 1], 'message_stop');
 });

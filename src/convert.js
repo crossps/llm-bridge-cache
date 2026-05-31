@@ -309,11 +309,215 @@ class AnthropicStreamTranslator {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Request: Anthropic -> OpenAI  (for Anthropic-format clients hitting an OpenAI model)
+// ---------------------------------------------------------------------------
+
+function anthropicSystemToText(system) {
+  if (!system) return '';
+  if (typeof system === 'string') return system;
+  if (Array.isArray(system)) return system.map((b) => (typeof b === 'string' ? b : b.text || '')).join('\n\n');
+  return '';
+}
+
+function anthropicToOpenAIRequest(body) {
+  const out = { model: body.model, messages: [] };
+  const sys = anthropicSystemToText(body.system);
+  if (sys) out.messages.push({ role: 'system', content: sys });
+
+  for (const m of body.messages || []) {
+    const role = m.role;
+    const content = m.content;
+
+    if (typeof content === 'string') { out.messages.push({ role, content }); continue; }
+    if (!Array.isArray(content)) { out.messages.push({ role, content: '' }); continue; }
+
+    if (role === 'assistant') {
+      let text = '';
+      const toolCalls = [];
+      for (const b of content) {
+        if (b.type === 'text') text += b.text || '';
+        else if (b.type === 'tool_use') {
+          toolCalls.push({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } });
+        }
+      }
+      const msg = { role: 'assistant', content: text || null };
+      if (toolCalls.length) msg.tool_calls = toolCalls;
+      out.messages.push(msg);
+    } else {
+      // user message: may carry tool_result blocks (-> tool role messages), text, images
+      const parts = [];
+      const toolResults = [];
+      for (const b of content) {
+        if (b.type === 'text') parts.push({ type: 'text', text: b.text || '' });
+        else if (b.type === 'image') {
+          const src = b.source || {};
+          if (src.type === 'base64') parts.push({ type: 'image_url', image_url: { url: `data:${src.media_type};base64,${src.data}` } });
+          else if (src.type === 'url') parts.push({ type: 'image_url', image_url: { url: src.url } });
+        } else if (b.type === 'tool_result') {
+          toolResults.push(b);
+        }
+      }
+      for (const tr of toolResults) {
+        const trText = typeof tr.content === 'string'
+          ? tr.content
+          : Array.isArray(tr.content) ? tr.content.map((x) => x.text || '').join('') : '';
+        out.messages.push({ role: 'tool', tool_call_id: tr.tool_use_id, content: trText });
+      }
+      if (parts.length) {
+        const onlyText = parts.every((p) => p.type === 'text');
+        out.messages.push({ role: 'user', content: onlyText ? parts.map((p) => p.text).join('') : parts });
+      } else if (!toolResults.length) {
+        out.messages.push({ role: 'user', content: '' });
+      }
+    }
+  }
+
+  if (typeof body.max_tokens === 'number') out.max_tokens = body.max_tokens;
+  if (typeof body.temperature === 'number') out.temperature = body.temperature;
+  if (typeof body.top_p === 'number') out.top_p = body.top_p;
+  if (body.stop_sequences) out.stop = body.stop_sequences;
+  if (body.stream) out.stream = true;
+  if (Array.isArray(body.tools) && body.tools.length) {
+    out.tools = body.tools.map((t) => ({
+      type: 'function',
+      function: { name: t.name, description: t.description || '', parameters: t.input_schema || { type: 'object' } },
+    }));
+  }
+  if (body.tool_choice) {
+    const tc = body.tool_choice;
+    if (tc.type === 'auto') out.tool_choice = 'auto';
+    else if (tc.type === 'any') out.tool_choice = 'required';
+    else if (tc.type === 'tool' && tc.name) out.tool_choice = { type: 'function', function: { name: tc.name } };
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Response: OpenAI -> Anthropic  (non-streaming)
+// ---------------------------------------------------------------------------
+
+function mapFinishToStopReason(fr) {
+  switch (fr) {
+    case 'length': return 'max_tokens';
+    case 'tool_calls': return 'tool_use';
+    case 'stop':
+    case 'content_filter':
+    default: return 'end_turn';
+  }
+}
+
+function openAIToAnthropicResponse(resp, model) {
+  const choice = (resp.choices && resp.choices[0]) || {};
+  const msg = choice.message || {};
+  const content = [];
+  if (msg.content) content.push({ type: 'text', text: String(msg.content) });
+  if (Array.isArray(msg.tool_calls)) {
+    for (const tc of msg.tool_calls) {
+      let input = {};
+      try { input = tc.function && tc.function.arguments ? JSON.parse(tc.function.arguments) : {}; }
+      catch { input = {}; }
+      content.push({ type: 'tool_use', id: tc.id, name: tc.function && tc.function.name, input });
+    }
+  }
+  const u = resp.usage || {};
+  return {
+    id: resp.id || randId('msg_'),
+    type: 'message',
+    role: 'assistant',
+    model: model || resp.model,
+    content: content.length ? content : [{ type: 'text', text: '' }],
+    stop_reason: mapFinishToStopReason(choice.finish_reason),
+    stop_sequence: null,
+    usage: { input_tokens: u.prompt_tokens || 0, output_tokens: u.completion_tokens || 0 },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Response: OpenAI stream chunks -> Anthropic stream events
+// ---------------------------------------------------------------------------
+
+class OpenAIStreamToAnthropicTranslator {
+  constructor(model) {
+    this.model = model;
+    this.id = randId('msg_');
+    this.started = false;
+    this.textOpen = false;
+    this.textIndex = 0;
+    this.tools = new Map(); // openai tool index -> { anthropicIndex }
+    this.nextIndex = 0;
+    this.finishReason = null;
+    this.usage = null;
+  }
+  _start(out) {
+    if (this.started) return;
+    this.started = true;
+    out.push({ type: 'message_start', message: { id: this.id, type: 'message', role: 'assistant', model: this.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } });
+  }
+  _openText(out) {
+    if (this.textOpen) return;
+    this._start(out);
+    this.textIndex = this.nextIndex++;
+    this.textOpen = true;
+    out.push({ type: 'content_block_start', index: this.textIndex, content_block: { type: 'text', text: '' } });
+  }
+  handle(chunk) {
+    const out = [];
+    const choice = (chunk.choices && chunk.choices[0]) || {};
+    const delta = choice.delta || {};
+    this._start(out);
+    if (typeof delta.content === 'string' && delta.content.length) {
+      this._openText(out);
+      out.push({ type: 'content_block_delta', index: this.textIndex, delta: { type: 'text_delta', text: delta.content } });
+    }
+    if (Array.isArray(delta.tool_calls)) {
+      for (const tc of delta.tool_calls) {
+        const oaIdx = tc.index != null ? tc.index : 0;
+        let entry = this.tools.get(oaIdx);
+        if (!entry) {
+          entry = { anthropicIndex: this.nextIndex++ };
+          this.tools.set(oaIdx, entry);
+          out.push({ type: 'content_block_start', index: entry.anthropicIndex, content_block: { type: 'tool_use', id: tc.id || randId('toolu_'), name: (tc.function && tc.function.name) || '', input: {} } });
+        }
+        const args = tc.function && tc.function.arguments;
+        if (args) out.push({ type: 'content_block_delta', index: entry.anthropicIndex, delta: { type: 'input_json_delta', partial_json: args } });
+      }
+    }
+    if (choice.finish_reason) this.finishReason = mapFinishToStopReason(choice.finish_reason);
+    if (chunk.usage) this.usage = chunk.usage;
+    return out;
+  }
+  finish() {
+    const out = [];
+    this._start(out);
+    if (this.textOpen) out.push({ type: 'content_block_stop', index: this.textIndex });
+    for (const entry of this.tools.values()) out.push({ type: 'content_block_stop', index: entry.anthropicIndex });
+    out.push({ type: 'message_delta', delta: { stop_reason: this.finishReason || 'end_turn', stop_sequence: null }, usage: { output_tokens: this.usage ? this.usage.completion_tokens || 0 : 0 } });
+    out.push({ type: 'message_stop' });
+    return out;
+  }
+}
+
+// True if a request already carries any cache_control marker (so we don't double-add).
+function hasCacheControl(body) {
+  const scan = (blocks) => Array.isArray(blocks) && blocks.some((b) => b && typeof b === 'object' && b.cache_control);
+  if (scan(body.system)) return true;
+  for (const m of body.messages || []) {
+    if (m && scan(m.content)) return true;
+  }
+  return false;
+}
+
 module.exports = {
   openaiToAnthropic,
   anthropicToOpenAI,
   applyPromptCaching,
   AnthropicStreamTranslator,
+  anthropicToOpenAIRequest,
+  openAIToAnthropicResponse,
+  OpenAIStreamToAnthropicTranslator,
+  hasCacheControl,
+  anthropicSystemToText,
   // exported for tests
-  _internals: { convertMessages, mapStopReason, mapToolChoice, usageToOpenAI },
+  _internals: { convertMessages, mapStopReason, mapToolChoice, usageToOpenAI, mapFinishToStopReason },
 };
