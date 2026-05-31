@@ -5,6 +5,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+.npmrc
 llm-bridge.config.json
 *.local.json
 
