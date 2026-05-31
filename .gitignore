@@ -1,0 +1,16 @@
+# Dependencies (this project has none, but just in case)
+node_modules/
+
+# Secrets & local config — NEVER commit these
+.env
+.env.*
+!.env.example
+llm-bridge.config.json
+*.local.json
+
+# Logs & runtime data
+*.log
+logs/
+usage*.json
+.DS_Store
+Thumbs.db

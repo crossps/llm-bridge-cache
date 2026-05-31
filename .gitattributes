@@ -1,0 +1,12 @@
+# Normalize all text to LF in the repo and on checkout (everywhere).
+# Critical: keeps the bin/cli.js shebang LF-terminated so the CLI runs on
+# Linux/macOS after being published from Windows.
+* text=auto eol=lf
+
+# Windows batch files must stay CRLF.
+*.bat text eol=crlf
+
+# Treat common binaries as binary (none today, but future-proof).
+*.png binary
+*.jpg binary
+*.ico binary

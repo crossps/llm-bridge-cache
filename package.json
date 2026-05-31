@@ -1,0 +1,51 @@
+{
+  "name": "llm-bridge-cache",
+  "version": "1.0.0",
+  "description": "A zero-dependency local API bridge for OpenAI & Anthropic, with prompt injection and prompt-cache keepalive. One OpenAI-compatible endpoint in front of multiple LLM providers.",
+  "keywords": [
+    "llm",
+    "proxy",
+    "openai",
+    "anthropic",
+    "claude",
+    "gpt",
+    "prompt-cache",
+    "prompt-caching",
+    "cache",
+    "sillytavern",
+    "opencode",
+    "api-bridge",
+    "openai-compatible"
+  ],
+  "license": "MIT",
+  "author": "crossps (https://github.com/crossps)",
+  "homepage": "https://github.com/crossps/llm-bridge-cache#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crossps/llm-bridge-cache.git"
+  },
+  "bugs": {
+    "url": "https://github.com/crossps/llm-bridge-cache/issues"
+  },
+  "type": "commonjs",
+  "main": "src/server.js",
+  "bin": {
+    "llm-bridge-cache": "bin/cli.js",
+    "llmbc": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "config.example.json",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node bin/cli.js",
+    "test": "node --test"
+  }
+}

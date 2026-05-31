@@ -1,0 +1,10 @@
+# Keep the published package lean
+test/
+.github/
+CONTRIBUTING.md
+.env
+.env.*
+!.env.example
+llm-bridge.config.json
+*.local.json
+*.log
