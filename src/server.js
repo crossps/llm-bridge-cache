@@ -129,7 +129,9 @@ async function handleAnthropic(ctx) {
     'x-api-key': key,
     'anthropic-version': provider.version || '2023-06-01',
   };
-  if (caching) headers['anthropic-beta'] = 'prompt-caching-2024-07-31';
+  // Prompt caching is GA — no beta header needed; the cache_control fields in
+  // the body are sufficient. (The old "prompt-caching-2024-07-31" beta flag is
+  // obsolete and intentionally not sent.)
 
   const post = (payload) =>
     fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
