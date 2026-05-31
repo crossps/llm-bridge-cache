@@ -92,8 +92,9 @@ before(async () => {
     providers: {
       openai: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-openai-key'], models: ['gpt-4o'] },
       anthropic: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-anthropic-key'], version: '2023-06-01', models: ['claude-sonnet-4-5'] },
+      glm: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-glm-key'], models: ['glm-4.6'] },
     },
-    routing: { rules: [{ match: '^gpt-', provider: 'openai' }, { match: '^claude', provider: 'anthropic' }] },
+    routing: { rules: [{ match: '^gpt-', provider: 'openai' }, { match: '^claude', provider: 'anthropic' }, { match: '^glm', provider: 'glm' }] },
     injection: { enabled: false },
     anthropic: { promptCaching: true, defaultMaxTokens: 1024 },
     cacheRefresh: { enabled: false },
@@ -136,6 +137,18 @@ test('OpenAI route: passthrough with Bearer auth', async () => {
   const up = captured['/v1/chat/completions'];
   assert.equal(up.body.model, 'gpt-4o');
   assert.match(up.headers.authorization, /^Bearer test-openai-key$/);
+});
+
+test('GLM route: passthrough with its own key', async () => {
+  const r = await fetch(`${base()}/v1/chat/completions`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'glm-4.6', messages: [{ role: 'user', content: 'hi' }] }),
+  });
+  const j = await r.json();
+  assert.equal(j.choices[0].message.content, 'Hello from GPT'); // mock OpenAI-compatible reply
+  const up = captured['/v1/chat/completions'];
+  assert.equal(up.body.model, 'glm-4.6');
+  assert.match(up.headers.authorization, /^Bearer test-glm-key$/); // routed to GLM with GLM key
 });
 
 test('Anthropic route: converts request and response', async () => {

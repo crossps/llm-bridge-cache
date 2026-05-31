@@ -23,11 +23,20 @@ const DEFAULTS = {
       version: '2023-06-01',
       models: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5'],
     },
+    // Zhipu / Z.ai GLM models — OpenAI-compatible. Use the coding-plan base
+    // URL "https://api.z.ai/api/coding/paas/v4" instead if you're on that plan,
+    // or "https://open.bigmodel.cn/api/paas/v4" for the mainland-China endpoint.
+    glm: {
+      baseUrl: 'https://api.z.ai/api/paas/v4',
+      apiKeys: ['env:GLM_API_KEY'],
+      models: ['glm-4.6', 'glm-4.5', 'glm-4.5-flash'],
+    },
   },
   routing: {
     rules: [
       { match: '^(gpt-|o[0-9]|chatgpt)', provider: 'openai' },
       { match: '^claude', provider: 'anthropic' },
+      { match: '^glm', provider: 'glm' },
     ],
   },
   injection: {
