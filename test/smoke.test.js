@@ -93,8 +93,9 @@ before(async () => {
       openai: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-openai-key'], models: ['gpt-4o'] },
       anthropic: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-anthropic-key'], version: '2023-06-01', models: ['claude-sonnet-4-5'] },
       glm: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-glm-key'], models: ['glm-4.6'] },
+      kimi: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-kimi-key'], models: ['kimi-k2-0905-preview'] },
     },
-    routing: { rules: [{ match: '^gpt-', provider: 'openai' }, { match: '^claude', provider: 'anthropic' }, { match: '^glm', provider: 'glm' }] },
+    routing: { rules: [{ match: '^gpt-', provider: 'openai' }, { match: '^claude', provider: 'anthropic' }, { match: '^glm', provider: 'glm' }, { match: '^(kimi|moonshot)', provider: 'kimi' }] },
     injection: { enabled: false },
     anthropic: { promptCaching: true, defaultMaxTokens: 1024 },
     cacheRefresh: { enabled: false },
@@ -149,6 +150,18 @@ test('GLM route: passthrough with its own key', async () => {
   const up = captured['/v1/chat/completions'];
   assert.equal(up.body.model, 'glm-4.6');
   assert.match(up.headers.authorization, /^Bearer test-glm-key$/); // routed to GLM with GLM key
+});
+
+test('Kimi route: passthrough with its own key', async () => {
+  const r = await fetch(`${base()}/v1/chat/completions`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'kimi-k2-0905-preview', messages: [{ role: 'user', content: 'hi' }] }),
+  });
+  const j = await r.json();
+  assert.equal(j.choices[0].message.content, 'Hello from GPT'); // mock OpenAI-compatible reply
+  const up = captured['/v1/chat/completions'];
+  assert.equal(up.body.model, 'kimi-k2-0905-preview');
+  assert.match(up.headers.authorization, /^Bearer test-kimi-key$/); // routed to Kimi with Kimi key
 });
 
 test('Anthropic route: converts request and response', async () => {

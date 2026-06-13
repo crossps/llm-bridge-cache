@@ -1,6 +1,6 @@
 # LLM Bridge & Cache
 
-> One OpenAI-compatible endpoint in front of **OpenAI**, **Anthropic**, and **GLM (Z.ai)** — with **prompt injection** and a **prompt-cache keepalive** that most proxies don't have.
+> One OpenAI-compatible endpoint in front of **OpenAI**, **Anthropic**, **GLM (Z.ai)**, and **Kimi (Moonshot AI)** — with **prompt injection** and a **prompt-cache keepalive** that most proxies don't have.
 
 [![npm version](https://img.shields.io/npm/v/llm-bridge-cache.svg)](https://www.npmjs.com/package/llm-bridge-cache)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -17,7 +17,7 @@
 
 ## Why it exists
 
-- **One endpoint, many providers.** Stop reconfiguring your client every time you switch models. `gpt-4o` goes to OpenAI, `claude-sonnet-4-5` to Anthropic, `glm-4.6` to GLM (Z.ai) — automatically. Any OpenAI-compatible backend can be added by dropping in a `baseUrl`.
+- **One endpoint, many providers.** Stop reconfiguring your client every time you switch models. `gpt-4o` goes to OpenAI, `claude-sonnet-4-5` to Anthropic, `glm-4.6` to GLM (Z.ai), `kimi-k2-0905-preview` to Kimi (Moonshot AI) — automatically. Any OpenAI-compatible backend can be added by dropping in a `baseUrl`.
 - **Prompt-cache keepalive** ⭐ Anthropic's prompt cache expires after ~5 minutes. Pause to think, and your next message re-pays full price to re-cache a huge system prompt. This bridge quietly replays the last request with `max_tokens=1` on a timer to keep the cache warm — saving up to ~90% on input tokens for long, stable prompts (RP cards, agent system prompts, big lorebooks).
 - **Prompt injection.** Inject or override a system prompt, or insert messages at a chosen depth — without touching your client.
 - **Zero dependencies, BYO key.** Pure Node standard library. Your keys live in your environment, never in the package.
@@ -167,6 +167,11 @@ curl http://127.0.0.1:8787/v1/messages \
       "baseUrl": "https://api.z.ai/api/paas/v4",
       "apiKeys": ["env:GLM_API_KEY"],
       "models": ["glm-4.6", "glm-4.5", "glm-4.5-flash"]
+    },
+    "kimi": {                                 // Moonshot AI / Kimi — OpenAI-compatible
+      "baseUrl": "https://api.moonshot.ai/v1",
+      "apiKeys": ["env:MOONSHOT_API_KEY", "env:KIMI_API_KEY"],
+      "models": ["kimi-k2-0905-preview", "kimi-k2-0711-preview", "kimi-latest", "moonshot-v1-128k"]
     }
   },
 
@@ -174,7 +179,8 @@ curl http://127.0.0.1:8787/v1/messages \
     "rules": [
       { "match": "^(gpt-|o[0-9]|chatgpt)", "provider": "openai" },
       { "match": "^claude", "provider": "anthropic" },
-      { "match": "^glm", "provider": "glm" }
+      { "match": "^glm", "provider": "glm" },
+      { "match": "^(kimi|moonshot)", "provider": "kimi" }
     ]
   },
 

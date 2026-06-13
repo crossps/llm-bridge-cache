@@ -31,12 +31,21 @@ const DEFAULTS = {
       apiKeys: ['env:GLM_API_KEY'],
       models: ['glm-4.6', 'glm-4.5', 'glm-4.5-flash'],
     },
+    // Moonshot AI "Kimi" models — OpenAI-compatible. Swap to the mainland-China
+    // endpoint "https://api.moonshot.cn/v1" if your key was issued there. Either
+    // MOONSHOT_API_KEY (Moonshot's own name) or KIMI_API_KEY works.
+    kimi: {
+      baseUrl: 'https://api.moonshot.ai/v1',
+      apiKeys: ['env:MOONSHOT_API_KEY', 'env:KIMI_API_KEY'],
+      models: ['kimi-k2-0905-preview', 'kimi-k2-0711-preview', 'kimi-latest', 'moonshot-v1-128k'],
+    },
   },
   routing: {
     rules: [
       { match: '^(gpt-|o[0-9]|chatgpt)', provider: 'openai' },
       { match: '^claude', provider: 'anthropic' },
       { match: '^glm', provider: 'glm' },
+      { match: '^(kimi|moonshot)', provider: 'kimi' },
     ],
   },
   injection: {
