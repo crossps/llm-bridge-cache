@@ -17,7 +17,7 @@
 
 ## Why it exists
 
-- **One endpoint, many providers.** Stop reconfiguring your client every time you switch models. `gpt-4o` goes to OpenAI, `claude-sonnet-4-5` to Anthropic, `glm-4.6` to GLM (Z.ai), `kimi-k2-0905-preview` to Kimi (Moonshot AI) — automatically. Any OpenAI-compatible backend can be added by dropping in a `baseUrl`.
+- **One endpoint, many providers.** Stop reconfiguring your client every time you switch models. `gpt-4o` goes to OpenAI, `claude-sonnet-4-6` to Anthropic, `glm-4.6` to GLM (Z.ai), `kimi-k2-0905-preview` to Kimi (Moonshot AI) — automatically. Any OpenAI-compatible backend can be added by dropping in a `baseUrl`.
 - **Prompt-cache keepalive** ⭐ Anthropic's prompt cache expires after ~5 minutes. Pause to think, and your next message re-pays full price to re-cache a huge system prompt. This bridge quietly replays the last request with `max_tokens=1` on a timer to keep the cache warm — saving up to ~90% on input tokens for long, stable prompts (RP cards, agent system prompts, big lorebooks).
 - **Prompt injection.** Inject or override a system prompt, or insert messages at a chosen depth — without touching your client.
 - **Zero dependencies, BYO key.** Pure Node standard library. Your keys live in your environment, never in the package.
@@ -82,7 +82,7 @@ Use base URL `http://127.0.0.1:8787/v1` and any non-empty API key (unless you se
 API → Chat Completion → Custom (OpenAI-compatible).
 - **Custom Endpoint:** `http://127.0.0.1:8787/v1`
 - **API Key:** anything (e.g. `local`), unless you enabled a bridge key.
-- **Model:** `claude-sonnet-4-5`, `gpt-4o`, etc.
+- **Model:** `claude-sonnet-4-6`, `gpt-4o`, etc.
 </details>
 
 <details>
@@ -96,7 +96,7 @@ Add a custom OpenAI-compatible provider pointing at the bridge:
     "bridge": {
       "npm": "@ai-sdk/openai-compatible",
       "options": { "baseURL": "http://127.0.0.1:8787/v1" },
-      "models": { "claude-sonnet-4-5": {}, "gpt-4o": {} }
+      "models": { "claude-sonnet-4-6": {}, "gpt-4o": {} }
     }
   }
 }
@@ -131,12 +131,12 @@ export OPENAI_BASE_URL=http://127.0.0.1:8787/v1   # SDK appends /responses
 # OpenAI Chat Completions in
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}'
+  -d '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"hi"}]}'
 
 # Anthropic Messages in
 curl http://127.0.0.1:8787/v1/messages \
   -H "Content-Type: application/json" \
-  -d '{"model":"claude-sonnet-4-5","max_tokens":256,"messages":[{"role":"user","content":"hi"}]}'
+  -d '{"model":"claude-sonnet-4-6","max_tokens":256,"messages":[{"role":"user","content":"hi"}]}'
 ```
 </details>
 
@@ -161,7 +161,7 @@ curl http://127.0.0.1:8787/v1/messages \
       "baseUrl": "https://api.anthropic.com/v1",
       "apiKeys": ["env:ANTHROPIC_API_KEY"],
       "version": "2023-06-01",
-      "models": ["claude-opus-4-5", "claude-sonnet-4-5"]
+      "models": ["claude-opus-4-8", "claude-sonnet-4-6"]
     },
     "glm": {                                  // Zhipu / Z.ai — OpenAI-compatible
       "baseUrl": "https://api.z.ai/api/paas/v4",

@@ -91,7 +91,7 @@ before(async () => {
     defaultProvider: 'anthropic',
     providers: {
       openai: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-openai-key'], models: ['gpt-4o'] },
-      anthropic: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-anthropic-key'], version: '2023-06-01', models: ['claude-sonnet-4-5'] },
+      anthropic: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-anthropic-key'], version: '2023-06-01', models: ['claude-sonnet-4-6'] },
       glm: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-glm-key'], models: ['glm-4.6'] },
       kimi: { baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKeys: ['test-kimi-key'], models: ['kimi-k2-0905-preview'] },
     },
@@ -125,7 +125,7 @@ test('GET /v1/models lists models from both providers', async () => {
   const j = await r.json();
   const ids = j.data.map((m) => m.id);
   assert.ok(ids.includes('gpt-4o'));
-  assert.ok(ids.includes('claude-sonnet-4-5'));
+  assert.ok(ids.includes('claude-sonnet-4-6'));
 });
 
 test('OpenAI route: passthrough with Bearer auth', async () => {
@@ -168,7 +168,7 @@ test('Anthropic route: converts request and response', async () => {
   const r = await fetch(`${base()}/v1/chat/completions`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       messages: [{ role: 'system', content: 'SYS' }, { role: 'user', content: 'hi' }],
     }),
   });
@@ -196,7 +196,7 @@ test('Anthropic route: converts request and response', async () => {
 test('Anthropic route: streaming yields OpenAI chunks + [DONE]', async () => {
   const r = await fetch(`${base()}/v1/chat/completions`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-5', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
   });
   assert.match(r.headers.get('content-type') || '', /text\/event-stream/);
   const text = await r.text();
@@ -282,7 +282,7 @@ test('cacheRefresher: capture arms a chat and keepalive fires', async () => {
 test('/v1/messages -> Anthropic passthrough + cache breakpoint added', async () => {
   const r = await fetch(`${base()}/v1/messages`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }] }),
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 100, messages: [{ role: 'user', content: 'hi' }] }),
   });
   const j = await r.json();
   assert.equal(j.type, 'message');
@@ -298,7 +298,7 @@ test('/v1/messages -> Anthropic passthrough + cache breakpoint added', async () 
 test('/v1/messages -> Anthropic streaming is relayed as Anthropic SSE', async () => {
   const r = await fetch(`${base()}/v1/messages`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 100, stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 100, stream: true, messages: [{ role: 'user', content: 'hi' }] }),
   });
   assert.match(r.headers.get('content-type') || '', /text\/event-stream/);
   const text = await r.text();
@@ -340,7 +340,7 @@ test('/v1/responses -> OpenAI passthrough', async () => {
 test('/v1/responses -> Anthropic model returns a clear 400', async () => {
   const r = await fetch(`${base()}/v1/responses`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-5', input: 'hi' }),
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', input: 'hi' }),
   });
   assert.equal(r.status, 400);
   const j = await r.json();

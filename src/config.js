@@ -21,7 +21,7 @@ const DEFAULTS = {
       baseUrl: 'https://api.anthropic.com/v1',
       apiKeys: ['env:ANTHROPIC_API_KEY'],
       version: '2023-06-01',
-      models: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5'],
+      models: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
     },
     // Zhipu / Z.ai GLM models — OpenAI-compatible. Use the coding-plan base
     // URL "https://api.z.ai/api/coding/paas/v4" instead if you're on that plan,
